@@ -480,4 +480,10 @@ Now model case rates as a function of humidity and wind speed, and again model c
 ```
 
 
+Before we move on, let's make sure our final data set is saved in our folder for next steps. You have heard of read.csv(). Now we will write a .csv:
+
+```{r}
+write.csv(data, file = "final_data.csv", row.names = F) #this will save final_data.csv into your working directory.
+
+```
 Congratulations! You have completed the day 2 review. :) 
