@@ -1,0 +1,483 @@
+---
+title: "NTM Workshop Day 3"
+author: "Rachel Mercaldo"
+date: "2025-07-20"
+output: html_document
+---
+
+
+#    Agenda
+
+09:00 - 10:30    Review of Day 2
+11:00 - 12:30    Spatiotemporal variable selection
+13:30 - 15:30    Final models, using select variables
+16:00            Daily review
+
+
+
+
+##   Review of Day 2
+
+On day 2, we covered an introduction to Weather Source data structure and primarily worked on merging Weather Source data files.
+We got into a little bit of exploratory data analysis, and learned about some core spatiotemporal epidemiology methods.
+
+Below is Rachel's version of the code from Day 2. Run through it and complete the (revised) exercises to practice!
+
+
+###  To begin, make sure you have saved this file and opened it from the same folder as the Weather Source data.
+
+
+Here is a test code chunk. Run it. See where the results print (right below the code chunk). Convenient!
+
+```{r}
+#This an R code chunk!
+
+print('hello')
+
+3+3
+
+x <- 3 + 3
+
+x*2
+
+```
+
+
+### Let's review Day 2 now. First, we need to load our libraries
+
+```{r}
+
+library(dplyr)
+library(stringr)
+library(data.table)
+library(tidyverse)
+
+```
+
+
+### Next, we will load the data. 
+
+As we discussed yesterday, there are numerous meteorology files. We will first use the list.files() function to loop over all the files in the NTM Workshop folder where you have saved the data (your working directory) and list the ones that have the words "meteorology" in the filename. Then, the lapply() function will take that list of files, read them using read.csv() and then pipe them ( using %>% ) to the bind_rows() function.
+The result is a single data set that has all the meteorology data. 
+You can think of bind_rows() as stacking the different datasets on top of each other. This only works if every file has the same columns/column names. Thanksfully, our files do. :)
+
+```{r}
+
+file_names <- list.files(pattern = "meteorology") 
+met<- lapply(file_names, read.csv) %>% bind_rows()
+
+```
+
+
+Thankfully, it is easier to read in the land use and air quality data:
+
+```{r}
+
+#air quality
+air <- read.csv("air_quality.csv")
+
+#land use
+land <- read.csv("land_use.csv")
+
+```
+
+
+Today, we are going to aggregate all our data separately, before merging it. This way, we can ensure that everything is looking good at the monthly level before we join it all together.
+
+```{r}
+
+#meteorology:
+met$month_year <- paste(substr(met$date_valid_std, 6,7), substr(met$date_valid_std, 1, 4),sep = "/")
+
+ 
+#overall
+met_means <- aggregate(met[,c(8:52,56:62)], list(met$fips, met$month_year), mean) #all variables except 
+met_sums <- aggregate(met[,c(53:55)], list(met$fips, met$month_year), sum) #precipitation should be total
+  
+# save the original met if you want. If not, you can but a # operator in front of the code below, to hide it:
+save_met <- met
+
+#Now, overwrite the "met" object with a new data set: met1 and met2 merged together
+met <- merge(met_means, met_sums)
+```
+
+
+By using the aggregate() function, we have have lost two variable names. Fips has become "Group.1" and year_month is now "Group.2". Let's name them correctly:
+
+```{r}
+
+met <- met %>%
+  rename("fips" = Group.1,
+         "month_year" = Group.2)
+
+```
+
+
+Now, we will look at air quality data. Remember, air quality data is already monthly, but the only variables it has for time are date and date_valid_std. In short, the data is monthly, but it is associated with the first day of each month. 
+
+Since these date variables are still in standard date format, we can use the same code we used for meteorology data to pull out month and year. 
+
+We can also use this opportunity to try a new function, select(). With this, we can select a few columns that are most important to us. 
+
+First, we will use a negative symbol within select() to *remove* variables we don't want. Then we will use select() on its own, to *keep* variables we want.
+
+```{r}
+
+#month_year variable
+air$month_year <- paste(substr(air$date_valid_std, 6,7), substr(air$date_valid_std, 1, 4),sep = "/")
+
+#remove unwanted variables using select()
+
+air <- air %>%
+  select(-c(X, adm2_code, 
+            iso_a2, name, 
+            code_local, region, 
+            latitude_deg, longitude_deg, 
+            date_valid_std, year_valid_std, 
+            month_valid_std, dst_offset_minutes))
+
+air <- air %>%
+  select(fips,
+         month_year,
+         avg_carbon_monoxide_ppm_x10,
+         avg_sulfur_dioxide_ppb,
+         avg_nitrogen_dioxide_ppb,
+         avg_ozone_ppm_x1000,
+         avg_particulate_matter_1_ugpm3,
+         avg_particulate_matter_2p5_ugpm3_x10,
+         avg_particulate_matter_10_ugpm3)
+
+```
+
+
+It is time for land use data. Land use has only one observation for each fips code. Meaning, we don't have change over time. In this case, we just need to make sure that the fips code data has the same column name as it does in the meteorology and air quality data.
+
+While we're at it, let's remove the "X" column and the "NAME" column. You will see that we can actually use the pipe operatore ( %>% ) multiple times.
+
+```{r}
+
+#land use has a GEOID variable rather than a fips variable. Same data, different name
+#Rename GEOID, and remove some unnecessary variables:
+land <- land %>%
+  rename("fips" = GEOID) %>%
+  select(-c("X","NAME"))
+
+```
+
+
+Finally, it is time to join the data together. First we will take a look at all three data sets, then we will create a new object called "data." This will be created by joining air to met. Then, we will join land to the new data.
+
+```{r}
+
+#take a look at the head() of a few meteorology columns (no need to see them all)
+head(met[,1:5])
+
+#take alook at the head() of air and land
+head(air)
+head(land)
+
+```
+
+And, merge:
+
+```{r}
+
+data <- left_join(met, air, by = c("fips", "month_year"))
+
+data <- left_join(data, land, by = c("fips")) #remember, there is no month_year in land
+
+```
+
+
+Take a look at the new "data" object. See if there are any missing values (NA) or if anything looks suspicious.
+
+```{r}
+
+summary(data)
+
+```
+
+
+You can also look to see if there are any NAs by asking R to find them, Take a look at the code below. What does is.na() do? 
+
+```{r}
+#Let's see how many rows of data had missing values by using the nrow() and is.na() functions
+nrow(data[is.na(data),])
+
+```
+
+
+Zero! Fabulous. No missing data. 
+
+
+The next step is to load our case data, make sure it has the same variable names for easy merging, and join it to our Weather Source data:
+
+```{r}
+cases <- read.csv("case_data.csv")[-1]  #What does the [-1] do? 
+#Try running this chunk with the [-1], and then try running it again without the [-1]
+
+head(cases)
+```
+
+
+It seems the case data is monthly, but has a date variable from the first of each month, rather than a month_year variable. Let's create month_year and remove the date variable
+
+```{r}
+cases$month_year <- paste(substr(cases$date, 6,7), substr(cases$date, 1, 4),sep = "/")
+cases <- cases %>%
+  select(-date)
+
+head(cases)
+```
+
+
+Looks good! Let's merge:
+
+```{r}
+
+data <- left_join(data, cases, by = c("fips","month_year"))
+
+data <- data[!is.na(data$case_rate_100k),] #What is this line doing? Why did I include it?
+
+```
+
+
+Now, we will work on some exploratory data analysis. We did a little of this last time, but this time you will have a chance to work through the code so you have a better understanding of what is happening. 
+
+
+First, let's subset our data down to a few key variables. Right now, there are 97 variables in the data set. That is far too many. Let's go down to 20. 
+
+One of the best ways to remove variables (in my humble opinion) is to use the select() operator. If there is any pattern to the variables we want to remove, we can use that pattern to find groups of variables to remove. Here is an example, removing some land use variables that have no biological plausibility as risk factors for NTM. 
+
+```{r}
+
+#First, look at what the variable names are in our data set:
+
+names(data)
+
+#Remove some variables using select(). Why do we use the negative (-) in front of these variables? 
+data <- data %>%
+  select(-bl_dc_cl, -bl_eg_co, -hb_tr_mx, -lich_moss, -nl_eg_cl,
+                -nl_eg_op, -shrb_hrb_f, -shrub_eg, -sprs_herb, 
+                -sprs_veg_1, -bl_dc_co, cons_bare, -bare, -grassland, 
+                -herbaceous, -nl_dc_co, -nl_eg_co, -shrub_dc, -shrubland,
+                -sprs_shrub, -tr_hb_mx, -tree_shrub, -tr_mx_lf, -avg_cloud_cover_tot_pct, 
+                -cons_bare, -bl_eg_co, -nl_dc_co, -shrb_hrb_f, -veg_crop_m, 
+                -crop_veg_m, -crop_irg) 
+
+#What would happen if we did not have the "-" negative symbol in front of the variable names? 
+#Let's do a test:
+test <- data %>%
+  select(water_bdy) #no negative
+
+#what happened? Let's look:
+head(test) #Oh, my
+
+#Thankfully, we used a negative on data. Let's look at the remaining variables:
+
+names(data)
+
+```
+
+Now, we will use select() to keep the final variable list:
+
+```{r}
+
+data <- data %>%
+  select(fips, month_year, case_rate_100k, avg_temperature_air_2m_f, 
+         tot_precipitation_in, avg_particulate_matter_2p5_ugpm3_x10, 
+         avg_wind_speed_10m_mph, avg_humidity_relative_2m_pct)
+
+```
+
+
+We can also rename the variables so they are easier to code with:
+
+```{r}
+
+data <- data %>%
+  rename("temperature" = avg_temperature_air_2m_f, 
+         "precipitation" = tot_precipitation_in, 
+         "pm2p5" = avg_particulate_matter_2p5_ugpm3_x10, 
+         "wind_speed" = avg_wind_speed_10m_mph,
+         "humidity" = avg_humidity_relative_2m_pct)
+
+#look at the data set:
+head(data)
+```
+
+
+Now, some EDA (exploratory data analysis).
+
+Let's assume we are seeing the data for the first time. Let's look at the summary and structure of our variables:
+
+
+```{r}
+# Summarize the dataset
+summary(data)
+
+# Check structure
+str(data)
+
+# Check for missing values
+sum(is.na(data))
+
+```
+
+
+We have a date-like variable (month_year). We can convert that into a date format using the mutate() function from the "tidyverse" package an the as.yearmon() function from the "zoo" package.
+
+We will need to load "zoo" using the library() command. 
+For mutate(), you can get information about the function by typing ?mutate into your console. You can also use a search engine like Google and search for "mutate() R" and see what pops up. What does this function do?
+
+```{r}
+library(zoo)
+
+data <- data %>%
+  mutate(month_year = as.yearmon(month_year, format = "%m/%Y")) 
+
+head(data)
+```
+
+
+At its heart, EDA is about plotting variables and taking a look at them.
+```{r}
+
+# Plot case_rate over time
+ggplot(data, aes(x = month_year, y = case_rate_100k)) +
+  geom_line() +
+  labs(title = "Case Rate Over Time", x = "Month/Year", y = "Case Rate per 100k")
+
+```
+
+
+Use the empty code chunk, below, to plot case rates over time again, but use the log of the case rate. You can copy and paste most of the code from above.
+
+```{r}
+
+
+
+```
+
+Similarly, plot other variables:
+
+```{r}
+# Temperature over time
+ggplot(data, aes(x = month_year, y = temperature)) +
+  geom_line() +
+  labs(title = "Temperature Over Time", x = "Month/Year", y = "Temperature")
+
+```
+
+Use the empty code chunk below to plot humidity, pm2.5, wind speed, and precipitation over time. Feel free to copy/paste from above! 
+
+```{r}
+
+
+
+
+```
+
+
+We can also plot case rates against explanatory variables, like temperature:
+
+```{r}
+# Case rate vs temperature
+ggplot(data, aes(x = temperature, y = case_rate_100k)) +
+  geom_point() +
+  labs(title = "Case Rate vs Temperature", x = "Temperature", y = "Case Rate per 100k")
+
+```
+
+
+Repeat for other variable pairs:
+
+```{r}
+#Precipitation vs case rate
+ggplot(data, aes(x = precipitation, y = case_rate_100k)) +
+  geom_point() +
+  labs(title = "Case Rate vs Precipitation", x = "Precipitation", y = "Case Rate per 100k")
+
+
+#Include code for humidity, pm2.5, and wind speed:
+
+```
+
+
+
+It's okay if the plots look messy. We are plotting data from multiple fips codes over time. Each month will have a "dot" for each fips code. 
+
+As an *advanced* exercise, try plotting the average monthly case rate by the average monthly precipitation. Hint: you can use aggregate() or look up how to take an average by month using the group_by() and mutate() commands in R. For example, ask Chat GPT or Google "plot monthly average by groups in R."
+
+You can do this exercise in the empty code chunk, below:
+
+```{r}
+
+
+
+```
+
+
+For our analysis, we are not just using our explanatory variables at one point in time. We are also interested in lagged variables: predictors from the past that predict cases now.  Let's create some lagged variables:
+
+```{r}
+
+data <- data %>%
+  arrange(month_year) %>%
+  mutate(
+    lag_temperature = lag(temperature, 1),
+    lag_precipitation = lag(precipitation, 1),
+    lag_pm2p5 = lag(pm2p5, 1),
+    lag_humidity = lag(humidity, 1),
+    lag_wind_speed = lag(wind_speed, 1))
+```
+
+
+You can also do the same plotting exercise, only using the lagged variables:
+
+```{r}
+# Example: plot case rate vs lagged temperature
+ggplot(data, aes(x = lag_temperature, y = case_rate_100k)) +
+  geom_point() +
+  labs(title = "Case Rate vs Lagged Temperature", x = "Lagged Temperature", y = "Case Rate per 100k")
+```
+
+Go ahead and plot the case_rate against other lagged predictors:
+
+```{r}
+
+
+
+
+```
+
+
+
+Finally, some people include basic linear models part of exploratory data analysis. Let's fit some basic models to explore relationships:
+
+```{r}
+# Model: case_rate ~ temperature
+model_temp <- lm(case_rate_100k ~ temperature, data = data)
+summary(model_temp)
+
+# Model: case_rate ~ precipitation
+model_precip <- lm(case_rate_100k ~ precipitation, data = data)
+summary(model_precip)
+
+# Model: case_rate ~ pm2p5
+model_pm2p5 <- lm(case_rate_100k ~ pm2p5, data = data)
+summary(model_pm2p5)
+```
+
+
+Now model case rates as a function of humidity and wind speed, and again model case rates as a function of the lagged predictors
+
+```{r}
+
+
+
+
+```
+
+
+Congratulations! You have completed the day 2 review. :) 
