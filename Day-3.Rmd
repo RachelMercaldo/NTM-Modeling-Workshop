@@ -31,6 +31,7 @@ Here is a test code chunk. Run it. See where the results print (right below the 
 
 ```{r}
 #This an R code chunk!
+getwd()
 
 print('hello')
 
@@ -89,7 +90,7 @@ Today, we are going to aggregate all our data separately, before merging it. Thi
 #meteorology:
 met$month_year <- paste(substr(met$date_valid_std, 6,7), substr(met$date_valid_std, 1, 4),sep = "/")
 
- 
+
 #overall
 met_means <- aggregate(met[,c(8:52,56:62)], list(met$fips, met$month_year), mean) #all variables except 
 met_sums <- aggregate(met[,c(53:55)], list(met$fips, met$month_year), sum) #precipitation should be total
@@ -109,7 +110,6 @@ By using the aggregate() function, we have have lost two variable names. Fips ha
 met <- met %>%
   rename("fips" = Group.1,
          "month_year" = Group.2)
-
 ```
 
 
@@ -127,7 +127,7 @@ First, we will use a negative symbol within select() to *remove* variables we do
 air$month_year <- paste(substr(air$date_valid_std, 6,7), substr(air$date_valid_std, 1, 4),sep = "/")
 
 #remove unwanted variables using select()
-
+ncol(air)
 air <- air %>%
   select(-c(X, adm2_code, 
             iso_a2, name, 
@@ -135,6 +135,7 @@ air <- air %>%
             latitude_deg, longitude_deg, 
             date_valid_std, year_valid_std, 
             month_valid_std, dst_offset_minutes))
+ncol(air)
 
 air <- air %>%
   select(fips,
@@ -147,6 +148,7 @@ air <- air %>%
          avg_particulate_matter_2p5_ugpm3_x10,
          avg_particulate_matter_10_ugpm3)
 
+ncol(air)
 ```
 
 
@@ -224,8 +226,9 @@ It seems the case data is monthly, but has a date variable from the first of eac
 
 ```{r}
 cases$month_year <- paste(substr(cases$date, 6,7), substr(cases$date, 1, 4),sep = "/")
+
 cases <- cases %>%
-  select(-date)
+  dplyr::select(-c(date))
 
 head(cases)
 ```
@@ -238,6 +241,8 @@ Looks good! Let's merge:
 data <- left_join(data, cases, by = c("fips","month_year"))
 
 data <- data[!is.na(data$case_rate_100k),] #What is this line doing? Why did I include it?
+
+nrow(data)
 
 ```
 
@@ -257,7 +262,7 @@ names(data)
 
 #Remove some variables using select(). Why do we use the negative (-) in front of these variables? 
 data <- data %>%
-  select(-bl_dc_cl, -bl_eg_co, -hb_tr_mx, -lich_moss, -nl_eg_cl,
+  dplyr::select(-bl_dc_cl, -bl_eg_co, -hb_tr_mx, -lich_moss, -nl_eg_cl,
                 -nl_eg_op, -shrb_hrb_f, -shrub_eg, -sprs_herb, 
                 -sprs_veg_1, -bl_dc_co, cons_bare, -bare, -grassland, 
                 -herbaceous, -nl_dc_co, -nl_eg_co, -shrub_dc, -shrubland,
@@ -268,7 +273,7 @@ data <- data %>%
 #What would happen if we did not have the "-" negative symbol in front of the variable names? 
 #Let's do a test:
 test <- data %>%
-  select(water_bdy) #no negative
+  dplyr::select(water_bdy) #no negative
 
 #what happened? Let's look:
 head(test) #Oh, my
@@ -284,7 +289,7 @@ Now, we will use select() to keep the final variable list:
 ```{r}
 
 data <- data %>%
-  select(fips, month_year, case_rate_100k, avg_temperature_air_2m_f, 
+  dplyr::select(fips, month_year, case_rate_100k, avg_temperature_air_2m_f, 
          tot_precipitation_in, avg_particulate_matter_2p5_ugpm3_x10, 
          avg_wind_speed_10m_mph, avg_humidity_relative_2m_pct)
 
@@ -331,8 +336,6 @@ We will need to load "zoo" using the library() command.
 For mutate(), you can get information about the function by typing ?mutate into your console. You can also use a search engine like Google and search for "mutate() R" and see what pops up. What does this function do?
 
 ```{r}
-library(zoo)
-
 data <- data %>%
   mutate(month_year = as.yearmon(month_year, format = "%m/%Y")) 
 
@@ -413,6 +416,18 @@ You can do this exercise in the empty code chunk, below:
 
 ```{r}
 
+num_fips <- unique(data$fips)
+length(num_fips)
+
+data2 <- data %>% group_by(month_year) %>%
+  summarize(temperature = mean(temperature),
+            precipitation = sum(precipitation),
+            case_rate_100k = mean(case_rate_100k))
+
+
+ggplot(data2, aes(x = precipitation, y = case_rate_100k)) +
+  geom_point() +
+  labs(title = "Case Rate vs Precipitation", x = "Precipitation", y = "Case Rate per 100k")
 
 
 ```
@@ -422,7 +437,7 @@ For our analysis, we are not just using our explanatory variables at one point i
 
 ```{r}
 
-data <- data %>%
+data <- data %>% group_by(fips) %>%
   arrange(month_year) %>%
   mutate(
     lag_temperature = lag(temperature, 1),
@@ -440,6 +455,8 @@ You can also do the same plotting exercise, only using the lagged variables:
 ggplot(data, aes(x = lag_temperature, y = case_rate_100k)) +
   geom_point() +
   labs(title = "Case Rate vs Lagged Temperature", x = "Lagged Temperature", y = "Case Rate per 100k")
+
+head(data)
 ```
 
 Go ahead and plot the case_rate against other lagged predictors:
@@ -465,7 +482,7 @@ model_precip <- lm(case_rate_100k ~ precipitation, data = data)
 summary(model_precip)
 
 # Model: case_rate ~ pm2p5
-model_pm2p5 <- lm(case_rate_100k ~ pm2p5, data = data)
+model_pm2p5 <- lm(case_rate_100k ~ wind_speed, data = data)
 summary(model_pm2p5)
 ```
 
@@ -483,6 +500,9 @@ Now model case rates as a function of humidity and wind speed, and again model c
 Before we move on, let's make sure our final data set is saved in our folder for next steps. You have heard of read.csv(). Now we will write a .csv:
 
 ```{r}
+
+summary(data)
+
 write.csv(data, file = "final_data.csv", row.names = F) #this will save final_data.csv into your working directory.
 
 ```

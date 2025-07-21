@@ -1,0 +1,128 @@
+---
+title: "Day 3 Variable Selection"
+author: "Rachel Mercaldo"
+date: "2025-07-21"
+output: html_document
+---
+
+Welcome to the second (third? It never ends...) part of the day.
+
+We are going to dive into a very important topic, that of variable selection.
+
+While we have a very small data set for the workshop, you will have to work with a very large dataset when you analyze your data. Remember how we started with 97 variables? There will be even more! 
+
+Here, we will practice using some tools that will help us decide which of those variables are important for us to keep for our final models. 
+
+We will need some new packages:
+```{r setup, message=FALSE}
+library(glmnet)
+library(MASS)
+library(randomForest)
+```
+
+
+You can continue using the data we already have in our working directory, or you can reload the data that we saved in the last part this morning's code:
+
+```{r}
+# Load data
+data <- read_csv("data.csv")
+```
+
+
+IF you loaded the data again, take note: having data in .csv files is really convenient, but it does remove a lot of formatting. Our month_year variable is probably a character again, and we need to feed it through the as.yearmon() function again:
+
+```{r}
+data <- data %>%
+  mutate(month_year = as.yearmon(month_year, format = "%m/%Y")) 
+```
+
+Now we need to tell R which variables are up for selection. The contenders. There are a couple ways of doing this. 
+
+1. List the variables by name, within c()
+2. Select a bunch of variables using indexing: data[,c(2:5)], etc.
+
+Below I list them by name. Take a look at "data" and see if you can get the same result using indexing:
+
+```{r}
+vars <- c("temperature", "precipitation", "pm2p5", "humidity", "wind_speed")
+
+#or
+
+vars2 <- colnames(data[,"fill in the column numbers here"]) #what does colnames() do?
+```
+
+Let's use a new select() option! You can combine it with another function, like any_of() or all_of(). 
+
+Below, we will use select() to select our *predictor* data, or, the X data. Our case data, our dependent variable, will be saved to the object Y.
+
+```{r}
+# Prepare predictor matrix and response vector
+X <- data %>% 
+  dplyr::select(all_of(vars)) #what does the dplyr
+Y <- data$case_rate_100k
+```
+
+We are going to explore three different variable selection methods, stepwise variable selection, a LASSO model, and a Random Forest model.
+
+
+1. Stepwise Variable Selection
+```{r}
+# Combine response and predictors
+data_model <- data.frame(case_rate = Y, X)
+
+# Null and full models
+null_model <- lm(case_rate ~ 1, data = data_model)
+full_model <- lm(case_rate ~ ., data = data_model)
+
+# Stepwise selection
+step_model <- stepAIC(full_model, direction = "both", trace = FALSE)
+summary(step_model)
+
+```
+
+Interpretation: The selected variables are those retained in step_model.
+
+2. LASSO Regression
+Method: Using glmnet for penalized regression with variable selection
+
+```{r}
+# Prepare matrix for glmnet
+X_mat <- as.matrix(X)
+
+# Fit LASSO (alpha=1)
+set.seed(123)
+lasso_model <- cv.glmnet(X_mat, Y, alpha = 1)
+
+# Best lambda
+best_lambda <- lasso_model$lambda.min
+
+# Coefficients
+coef(lasso_model, s = best_lambda)
+
+# Plot CV curve
+plot(lasso_model)
+```
+
+Interpretation:
+Variables with non-zero coefficients at lambda.min are selected.
+
+3. Random Forest Variable Importance
+Method: Using randomForest to fit and extract variable importance
+
+```{r}
+# Fit Random Forest
+set.seed(123)
+rf_model <- randomForest(case_rate ~ ., data = data.frame(case_rate = Y, X), importance=TRUE)
+
+# Variable importance
+importance(rf_model)
+
+# Plot importance
+varImpPlot(rf_model)
+```
+
+Interpretation:
+Variables with higher importance scores contribute more to the model's predictions.
+
+
+Now we know what variables are important. We can choose a specific method or set some criteria (such as, final variables must have been selected as important in 2 of the 3 methods) or 
