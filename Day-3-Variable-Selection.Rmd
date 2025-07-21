@@ -66,6 +66,8 @@ Below I list them by name. Take a look at "data" and see if you can get the same
 
 vars <- colnames(data[,4:13]) #what does colnames() do?
 
+vars
+
 ```
 
 Let's use a new select() option! You can combine it with another function, like any_of() or all_of(). 
@@ -92,9 +94,7 @@ We are going to explore three different variable selection methods, stepwise var
 # Combine response and predictors
 data_model <- data.frame(case_rate = Y, X)
 
-# Null and full models
-null_model <- lm(case_rate ~ 1, data = data_model)
-summary(null_model)
+# First, create a full model (all variables in data)
 full_model <- lm(case_rate ~ ., data = data_model)
 summary(full_model)
 
@@ -102,6 +102,9 @@ summary(full_model)
 step_model <- stepAIC(full_model, direction = "both", trace = FALSE)
 summary(step_model)
 
+
+test_model <- lm(case_rate_100k ~ wind_speed + lag_wind_speed + fips, data = data)
+summary(test_model)
 ```
 
 Interpretation: The selected variables are those retained in step_model.
@@ -111,14 +114,15 @@ Method: Using glmnet for penalized regression with variable selection
 
 ```{r}
 # Prepare matrix for glmnet
-X_mat <- as.matrix(X)
+X_mat <- as.matrix(X) #LASSO prefers a matrix format
 
 # Fit LASSO (alpha=1)
-set.seed(123)
-lasso_model <- cv.glmnet(X_mat, Y, alpha = 1)
+set.seed(4) #we need to set a seed so we get the same result every time.
+
+lasso_model <- cv.glmnet(X_mat, Y, alpha = 1) #the CV stands for cross-validation.
 
 # Best lambda
-best_lambda <- lasso_model$lambda.min
+best_lambda <- lasso_model$lambda.min 
 
 # Coefficients
 coef(lasso_model, s = best_lambda)
@@ -129,6 +133,13 @@ plot(lasso_model)
 
 Interpretation:
 Variables with non-zero coefficients at lambda.min are selected.
+
+In our case (with the variables we are using for the workshop, in this one climate zone), LASSO didn't pull out any variables except the intercept.
+
+```{r}
+lasso_variables <- c("temperature", "precipitation","pm2p5","wind_speed","humidity", "lag_temperature","lag_humidity","lag_wind_speed")
+```
+
 
 3. Random Forest Variable Importance
 Method: Using randomForest to fit and extract variable importance
@@ -150,3 +161,75 @@ Variables with higher importance scores contribute more to the model's predictio
 
 
 Now we know what variables are important. We can choose a specific method or set some criteria (such as, final variables must have been selected as important in 2 of the 3 methods) 
+
+
+
+## Part 2
+
+Let's look at final models.
+
+
+Stepwise:
+
+The good news: a stepwise model can serve as a final model! Score! 
+
+```{r}
+
+summary(step_model)
+
+```
+
+
+LASSO (Least Absolute Shrinkage and Selection Operator)
+
+Our LASSO model didn't find any non-zero variables except the intercept, but we can print the intercept's coefficient:
+
+```{r}
+lasso_data <- data[,c(lasso_variables,"case_rate_100k")]
+
+head(lasso_data)
+
+lasso_model <- glm(case_rate_100k ~ ., data = lasso_data)
+summary(lasso_model)
+
+```
+
+
+Random Forest
+
+```{r}
+# Select the top important variables (based on %incMSE)
+mse_vars_rf <- names(sort(importance(rf_model)[, 1], decreasing = TRUE)[1:3])
+mse_vars_rf
+
+# Select the top important variables (based on IncNodePurity)
+purity_vars_rf <- names(sort(importance(rf_model)[, 2], decreasing = TRUE)[1:3])
+purity_vars_rf
+```
+
+
+Random Forest Model with GLM (generalized linear model)
+
+Based on top 3 according to MSE:
+
+```{r}
+# Formula for GLM model
+rf_glm_formula <- as.formula(paste("case_rate_100k ~", paste(mse_vars_rf, collapse = " + ")))
+
+rf_glm_model <- glm(rf_glm_formula, data = data)
+
+# Evaluate model performance
+summary(rf_glm_model)
+```
+
+Based on top 3 according to node purity:
+
+```{r}
+# Formula for GLM model
+rf_glm_formula2 <- as.formula(paste("case_rate_100k ~", paste(purity_vars_rf, collapse = " + ")))
+
+rf_glm_model2 <- glm(rf_glm_formula2, data = data)
+
+# Evaluate model performance
+summary(rf_glm_model2)
+```
