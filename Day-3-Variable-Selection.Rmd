@@ -15,9 +15,17 @@ Here, we will practice using some tools that will help us decide which of those 
 
 We will need some new packages:
 ```{r setup, message=FALSE}
+# 
+# install.packages("glmnet")
+# install.packages("MASS")
+# install.packages("randomForest")
+library(data.table)
+library(tidyverse)
+library(zoo)
 library(glmnet)
 library(MASS)
 library(randomForest)
+
 ```
 
 
@@ -25,7 +33,9 @@ You can continue using the data we already have in our working directory, or you
 
 ```{r}
 # Load data
-data <- read_csv("data.csv")
+data <- read.csv("final_data.csv")
+
+str(data)
 ```
 
 
@@ -34,6 +44,12 @@ IF you loaded the data again, take note: having data in .csv files is really con
 ```{r}
 data <- data %>%
   mutate(month_year = as.yearmon(month_year, format = "%m/%Y")) 
+
+head(data)
+
+data <- data[complete.cases(data),]
+
+head(data)
 ```
 
 Now we need to tell R which variables are up for selection. The contenders. There are a couple ways of doing this. 
@@ -44,11 +60,12 @@ Now we need to tell R which variables are up for selection. The contenders. Ther
 Below I list them by name. Take a look at "data" and see if you can get the same result using indexing:
 
 ```{r}
-vars <- c("temperature", "precipitation", "pm2p5", "humidity", "wind_speed")
+# vars <- c("temperature", "precipitation", "pm2p5", "humidity", "wind_speed", "lag_temperature") #etc
+# 
+# #or
 
-#or
+vars <- colnames(data[,4:13]) #what does colnames() do?
 
-vars2 <- colnames(data[,"fill in the column numbers here"]) #what does colnames() do?
 ```
 
 Let's use a new select() option! You can combine it with another function, like any_of() or all_of(). 
@@ -57,8 +74,13 @@ Below, we will use select() to select our *predictor* data, or, the X data. Our 
 
 ```{r}
 # Prepare predictor matrix and response vector
+
+vars 
+
 X <- data %>% 
-  dplyr::select(all_of(vars)) #what does the dplyr
+  dplyr::select(all_of(vars)) 
+
+
 Y <- data$case_rate_100k
 ```
 
@@ -72,7 +94,9 @@ data_model <- data.frame(case_rate = Y, X)
 
 # Null and full models
 null_model <- lm(case_rate ~ 1, data = data_model)
+summary(null_model)
 full_model <- lm(case_rate ~ ., data = data_model)
+summary(full_model)
 
 # Stepwise selection
 step_model <- stepAIC(full_model, direction = "both", trace = FALSE)
@@ -125,4 +149,4 @@ Interpretation:
 Variables with higher importance scores contribute more to the model's predictions.
 
 
-Now we know what variables are important. We can choose a specific method or set some criteria (such as, final variables must have been selected as important in 2 of the 3 methods) or 
+Now we know what variables are important. We can choose a specific method or set some criteria (such as, final variables must have been selected as important in 2 of the 3 methods) 
