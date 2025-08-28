@@ -1,0 +1,13 @@
+---
+title: "README"
+author: "Rachel Mercaldo"
+date: "2025-08-28"
+output: html_document
+---
+
+The materials from the 2025 modeling workshop in Brisbane, Australia are saved in this repository for use by participants of the eASIA JRP collaboration.
+
+The material is separated by day. Within each day's folder, work from the first file to the last if you wish to follow the order of the workshop.
+
+If you have any questions, please e-mail Rachel Mercaldo.
+

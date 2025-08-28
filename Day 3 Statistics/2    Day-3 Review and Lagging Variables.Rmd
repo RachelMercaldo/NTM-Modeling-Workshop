@@ -1,0 +1,204 @@
+---
+title: "Day 3 Review and Lagging Variables"
+author: "Rachel Mercaldo"
+date: "2025-07-20"
+output: html_document
+---
+
+Welcome to Day 3!
+
+Let's start with a review of day 2.
+
+On day 2, we covered an introduction to Weather Source data structure and primarily worked on merging Weather Source data files.
+We got into a little bit of plotting.
+
+Below is the live version of some of day 2's code (examples Rachel gave during a Zoom session). 
+
+To begin, we need to load our libraries.
+
+```{r}
+
+library(dplyr)
+library(stringr)
+library(data.table)
+library(tidyverse)
+
+```
+
+
+Next, we will load the data. 
+
+Since the Day-2.Rmd file has all the code for arranging the data, today we will begin by loading the file "practice_data.csv". This file was generated using the code from day 2!
+
+```{r}
+
+data <- read.csv("practice_data.csv")
+
+```
+
+
+I went through a few examples of indexing on Day 1, and we did a little work on aggregating data and selecting certain variables from a dataset on Day 2. Below, I have a few more examples of a new function, *select()* that does the same things, but faster. This code also makes use of the %>% pipe operator.
+
+You can read a command to R the same way you can read a sentence, and that helps make sense of the pipe operator. For example:
+
+data %>% group_by(mon_year) %>% summarize(cases = sum(case_rate_100k))
+
+can be read as:
+
+"take dataset *data* and group the rows by the variable *mon_year*, then pipe the grouped rows to the *summarize()* function and calculate the sum of the case rates within each mon_year group."
+
+You must also assign this to something for best results (otherwise, R will just print the grouped summaries). So really you want to use:
+
+data2 <- data %>% group_by(mon_year) %>% summarize(cases = sum(case_rate_100k))
+
+You saw me do some grouping and summarizing during the plotting steps of Day 2, though I wanted you to focus more on the GGPlot package at the time.
+
+
+Let's use *select()*
+
+
+```{r}
+
+data2 <- data %>% 
+  select(mon_year)
+
+head(data2)
+
+```
+
+What happened? Data2 is now a new object in our Environment. It was created when we took the dataset *data* and asked R to pipe it to the function *select()*. That function selected only one variable, *mon_year*. 
+
+
+We can also use a negative symbol within *select()* to *remove* variables we don't want. 
+
+```{r}
+
+data3 <- data %>%
+  select(-c(case_rate_100k,
+         avg_humidity_relative_2m_pct,
+         avg_particulate_matter_2p5_ugpm3_x10))
+
+```
+
+
+We can of course use *select()* to *keep* numerous variables we want. Why don't I use a c() operator, below?
+
+```{r}
+
+data4 <- data %>%
+  select(fips,
+         mon_year,
+         avg_temperature_air_2m_f,
+         tot_precipitation_in)
+
+head(data4)
+```
+
+
+The reason I used a c() for the first example, when we used a negative, is basically because I didn't want to type a - symbol before each variable name. I could have just as easily done:
+
+```{r}
+
+data3 <- data %>% 
+  select(-case_rate_100k,
+         -avg_humidity_relative_2m_pct,
+         -avg_particulate_matter_2p5_ugpm3_x10)
+
+```
+
+Instead of putting a negative symbol before each variable, I essentially told R "here is a list of variables and I don't want to keep any of them" by putting the negative before the c(). 
+
+
+Okay, now that we've played with *select()*, let's see what else we did on Day 2 during the live coding session:
+
+
+Take a look at the original "data" object. See if there are any missing values (NA) or if anything looks suspicious.
+
+```{r}
+
+summary(data)
+
+```
+
+
+You can also look to see if there are any NAs by asking R to find them, Take a look at the code below. What does is.na() do? 
+
+
+```{r}
+
+#Let's see how many rows of data had missing values by using the nrow() and is.na() functions
+nrow(data[is.na(data),])
+
+```
+
+
+Zero! Fabulous. No missing data. 
+
+One more feature that we played with was the *rename()* function. We can rename the variables so they are easier to code with:
+
+```{r}
+
+data <- data %>%
+  rename("temperature" = avg_temperature_air_2m_f, 
+         "precipitation" = tot_precipitation_in, 
+         "pm2p5" = avg_particulate_matter_2p5_ugpm3_x10, 
+         "wind_speed" = avg_wind_speed_10m_mph,
+         "humidity" = avg_humidity_relative_2m_pct)
+
+#look at the data set:
+head(data)
+```
+
+
+We finished Day 2 with some plotting. 
+
+
+That's all for review. Now, let's take a look at our data and make sure we have everything we need to do the next step of exploratory data analysis: bivariate models.
+
+For our analysis, we are not just using our explanatory variables at one point in time. We are also interested in lagged variables: predictors from the past that predict cases now.  Let's create some lagged variables:
+
+```{r}
+
+data <- data %>% group_by(fips) %>%
+  arrange(mon_year) %>%
+  mutate(
+    lag_temperature = lag(temperature, 1),
+    lag_precipitation = lag(precipitation, 1),
+    lag_pm2p5 = lag(pm2p5, 1),
+    lag_humidity = lag(humidity, 1),
+    lag_wind_speed = lag(wind_speed, 1))
+```
+
+
+Now that we have all our data, we can run some simple linear models to look at relationships. 
+
+
+
+```{r}
+# Model: case_rate ~ temperature
+model_temp <- lm(case_rate_100k ~ temperature, data = data)
+summary(model_temp)
+
+# Model: case_rate ~ precipitation
+model_precip <- lm(case_rate_100k ~ precipitation, data = data)
+summary(model_precip)
+
+# Model: case_rate ~ pm2p5
+model_pm2p5 <- lm(case_rate_100k ~ wind_speed, data = data)
+summary(model_pm2p5)
+```
+
+
+Before we move on, let's make sure our final data set is saved in our folder for next steps. You have heard of read.csv(). Now we will write a .csv.
+
+Below, I have commented out the code by putting a # in front of it. This tells R to ignore that row. It's okay to ignore it, because I have already saved final_data.csv in the Day 3 folder. 
+
+```{r}
+
+#summary(data)
+
+#write.csv(data, file = "final_data.csv", row.names = F) #this will save final_data.csv into your working directory.
+
+```
+
+Congratulations! You have completed the day 2 review AND lagged some variables. 

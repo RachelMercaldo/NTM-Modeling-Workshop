@@ -1,0 +1,255 @@
+---
+title: "Day 1"
+author: "Rachel Mercaldo"
+date: "2025-07-17"
+output: html_document
+---
+
+
+Welcome to Day 1, Part 2 (For Part 1, please see the "Introduction.pdf" file in the Day 1 folder).
+
+
+From now on, we will be working directly in R
+
+
+First, let's load the R packages we will need for our exercise:
+```{r}
+
+install.packages("readxl")
+install.packages("tidyverse")
+library(readxl)
+library(tidyverse)
+
+```
+
+
+We discussed working directories a little in the Introduction document (page 6). Essentially, it is the folder R has direct access to while you are coding. If you save an R file in a specific folder, and then open it from that folder, R will automatically know to access any data that is also saved in the same folder. 
+
+If, instead, you want to switch to a new working directory, you can do so by navigating to the top left of the program, selecting “Session," selecting “Set Working Directory” and then “Choose directory.” A File Explorer window will appear and you can navigate to the folder where the data are stored.
+
+You can also change your directory by using the *setwd()* command:
+
+```{r}
+
+setwd("/Example/") 
+
+```
+
+
+Now, lets load some data. We will use two commands, *read.csv()* and *read_xlsx()*
+
+read.csv() will import data from .csv files, while read_xlsx() imports data from .xlsx files.
+
+When we import data, we assign the dataset a name. This way, R can store the data in the Environment.
+
+We can assign names using either the <- or = operators. In general, I prefer <- , but we will try both ways.
+
+
+```{r}
+
+sample1 = read.csv("sample1.csv") 
+
+sample2 <- read_xlsx("sample2.xlsx")
+
+```
+
+
+Now, we have sample data loaded into our R environment. There are several ways of taking a look at our datasets.
+
+We can look at the first 5-6 rows of every variable using the *head()* function, or look at the LAST 5-6 rows using the *tail()* function. 
+
+
+```{r}
+
+#Look at the first 5-6 rows of every variable using the head() argument:
+
+head(sample1)
+
+head(sample2)
+
+#We can also look at the last 5-6 rows using the tail() function:
+
+tail(sample1)
+
+tail(sample2)
+
+```
+
+
+Most of the things we can do to an entire dataset, we can do to a single column of the data. For example, we can select a single column of data from a dataset by using the $ operator within our *head()* and *tail()* commands.
+
+
+```{r}
+
+head(sample1$AREA_CODE)
+tail(sample2$total)
+
+```
+
+
+We can also pick specific columns using square brackets [], which is also called indexing:
+
+```{r}
+
+sample1[,"AREA_CODE"] #call for the entire column "AREA_CODE"
+
+sample1[1, "AREA_CODE"] #call for just the first row of AREA_CODE
+
+```
+
+
+When indexing, remember to use the square brackets [] and to put rows on the left, and columns on the right of the comma, like so: [rows,columns]
+
+You can call columns by name, or by number
+
+```{r}
+
+sample2[1, 2]
+sample2[1, "cases"]
+
+```
+
+
+You can also ask for multiple rows or columns:
+
+```{r}
+
+sample2[1:3, "cases"]  # the : operator will select every row from 1 through 3
+sample2[4:5, 1:3] #rows 4-5, and columns 1-3
+
+```
+
+
+You will get an error if you ask to see a row or column that does not exist:
+
+```{r}
+
+sample2[4:5, 5]
+
+```
+
+
+If you want to see a group of rows or columns that are not in order, you can do so using c()
+ c() stands for "concatenate," and you can use it to give R a list of values or objects it should consider as one:
+
+```{r}
+
+sample2[c(1,2), c(1,3)]
+
+```
+
+
+There are several ways indexing helps us during data analysis. For one, we can create new datasets that match certain criteria, such as "all rows where there is at least 1 case counted" or "all columns that have numeric data."
+
+```{r}
+
+sample2_save <- sample2 #let's save the original sample2, so it still exists in our environment
+
+sample2 <- sample2[sample2$cases > 1,] #subset sample2 to rows that have more than 1 case
+head(sample2) #take a look
+
+
+sample2 <- sample2_save #reset sample2
+
+```
+
+
+Finally, if you forget to subset a dataframe and you give R a command to perform on the dataframe, R will try to perform that command on every value of the dataset:
+
+```{r}
+
+head(sample2) #take a look at the original
+
+sample2*2 #this will automatically print sample2*2. Why?
+
+```
+
+Now that we know how to subset our datasets by row and column, let's take a closer look at the variables:
+
+```{r}
+#We can list the variables using names()
+
+names(sample1)
+names(sample2)
+
+#We can see what data types the variables are using str() 
+
+str(sample1)
+str(sample2)
+
+#We can run "summary" on a variable to find it's interquartile range and mean:
+
+summary(sample1$TOT_PRECIPITATION_IN)
+
+#We can even run "summary" on the whole dataset:
+
+summary(sample2)
+
+```
+
+
+Does anything look wrong with the summary of sample2? If you look at the structure of sample2 via str(sample2) you will see that AREA_CODE is listed as numeric, meaning a number.
+
+```{r}
+
+str(sample2$AREA_CODE)
+
+```
+
+This is why R thinks this value can have a mean, maximum, etc. But, if this variable is actually describing some geographic area, like a village or city, we do not want this variable to be a number. We can change it to a character if we want:
+
+```{r}
+
+sample2$AREA_CODE <- as.character(sample2$AREA_CODE)
+
+#Check the structure of sample2 again:
+
+str(sample2)
+
+```
+
+Now AREA_CODE is listed as chr, or character. Try the summary:
+
+```{r}
+
+summary(sample2)
+
+```
+
+This time, R doesn't attempt to treat the AREA_CODE variable as a number.
+
+Finally, what if we wanted our two datasets to become one? We can join or merge them easily, because they both have a similar column "AREA_CODE":
+
+```{r}
+
+sample <- left_join(sample1, sample2, by = "AREA_CODE")
+
+```
+
+What error did you get? 
+We forgot that we changed the datatype of AREA_CODE for one dataset, but not the other. Let's fix it:
+
+```{r}
+
+sample1$AREA_CODE <- as.character(sample1$AREA_CODE)
+
+#then
+
+sample <- left_join(sample1, sample2, by = "AREA_CODE")
+
+```
+
+#Take a look at the new "sample" object by clicking it in your Environment. It should open in a new window.
+Alternatively use:
+
+```{r}
+
+view(sample)
+
+```
+
+
+This gives you a lot of the tools you will need to struggle through the use of R. In the end, no one is really an expert at R. Everyone has to search the internet for questions like "how do I set a working directory in R?" or "how do I subset all columns that contain the word "help"?" That's normal! The goal is to get comfortable enough with R that you can search for answers to the right questions. 
+
+You are well on your way, and we will practice more!
+

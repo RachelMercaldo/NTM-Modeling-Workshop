@@ -1,0 +1,394 @@
+---
+title: "Day 2"
+author: "Rachel Mercaldo"
+date: "2025-07-17"
+output: html_document
+---
+
+
+Welcome to Day 2! Today, our R exercises will be loading weather source data, aggregating data, merging data sets, and exploring our data through just a few plots in base R and ggplot2. 
+
+Make sure this .Rmd file is saved in the workshop "Day 2" folder. Open this file from that folder, in order to automatically set R's working directory to the right spot. Alternatively, you can set the working directory to the "Day 2" folder using RStudio's 'Session' tab. 
+
+Let's get started!
+
+
+As always, we begin by loading packages using the library() command. 
+
+If you do not have a package installed, R will return an error when you try to run the library() command for that package. If this happens, you can install the package(s) by using RStudio's 'Tools' tab by selecting "Install packages...". In the window that opens, type the package names in the "Packages" box. You can install multiple packages by separating their names with a comma. Make sure "install dependencies" is checked at the bottom left before selecting the "Install" button. 
+
+Alternatively, you can install a package in R using *install.packages("package-name")* (no asterisk * needed. I just added those to make the font a different color). An example is below at line 23, and a hashtag # is used to comment out the command so it will not actually run. 
+
+
+```{r, warning=FALSE}
+#install.packages("readxl")  #example of install.packages() command
+library(readxl) #for Excel files that were not saved with the .csv extension
+library(tidyverse) #for general data manipulation
+library(zoo)
+```
+
+
+1. Loading Weather Source data
+
+The weather source data is available in the "WS data files" folder of the Day 2 folder. So many folders! But that is okay. We will temporarily reset the working directory in the following code chunk, so that R knows where to find the climate data. 
+
+You can open the "WS data files" folder in windows File Explorer/macOS Finder to look at its contents. You will see a bunch of "meteorology" files, but only one air quality file and one land use file. This is because Weather Source provided us with daily meteorology values and there was too much data to save it all within one file. Air quality and land use, on the other hand, are monthly or yearly values, and so these could be saved in one file each.
+
+The code below first tells R to list all the meteorology files because we want to load all of them together as one dataset. It then loads the air quality and land use data each separately. 
+
+Note: when you set a working directory within an R Markdown code chunk, it sets the directory *only* for that chunk. Once that section of code is done running, the working directory goes back to the main one used for the rest of the code.
+
+
+```{r}
+
+# Reset working directory
+setwd('WS data files')
+
+# Tell r that we want to combine all the meteorology files into one. 
+# We want R to ignore the "do_not_load.csv" file, though. So make sure R knows which files to use.
+file_names <- list.files(pattern = "meteorology") # Tell R to list files that match our criteria
+met<- lapply(file_names, read.csv) %>% bind_rows() # Takes the files in file_names and binds them together
+
+
+# Now, read the air quality and land use data in. These are simpler
+
+# Air quality
+air <- read.csv("air_quality.csv")
+
+# Land use
+land <- read.csv("land_use.csv")
+
+```
+
+
+The above code tells R to find all files with the word "meteorology" in the file name, then bind the rows of those files together into one dataset. It does this without saving each individual file into the R environment, saving us a lot of space and memory resources. 
+
+This code only works if all the files have the same column order. Your Weather Source data should be standardized similarly, so you can apply this method to your own data.
+
+Now, let's take a look at the data
+
+```{r}
+
+# we will use head(), tail(), summary(), and str() to see what's in our data
+head(met)
+tail(met)
+summary(met)
+str(met)
+
+head(air)
+tail(air)
+summary(air)
+str(air)
+
+head(land)
+tail(land)
+summary(land)
+str(land)
+
+```
+
+
+Ideally, we will have all our data in one dataset. To get this, we will have to join or merge our data together into one object. There are several ways to do this in R, including the join() family of functions, like left_join or right_join, or the merge() function. First, though, we need to know what variables are common between all the datasets. R will want to know what it can merge by.
+
+If we had patient-level data from two separate files, such as medical history and demographic data, we would want to merge these together according to some patient identifier. That way, the correct person is matched between datasets. 
+
+For aggregated data across time, merging is more complicated. In our case, we are interested in climate in different geographic areas (represented by "fips" or "GEOID" column names) at different times (usually in a "date" column, but we are interested in monthly data). The meteorology, air quality, and land use datasets have these variables in some format:
+
+met has "fips" and "date_valid_std" columns
+air has "fips" and "date"
+land has "GEOID" and no date column
+
+
+It is also important to make sure that the columns of the same variables have the same structure. For example, if one dataset had fips code in character format and the others had it in numeric format, R will give us an error.
+
+Let's make sure fips/GEOID and date/date_valid_std have the same data types.
+
+```{r}
+
+str(met$fips)
+str(air$fips)
+str(land$GEOID)
+
+str(met$date_valid_std)
+str(air$date)
+
+```
+
+It looks like all three datasets have the FIPS code information in "integer" format, while the date variables are consistently in "character" format. This is a good first step!
+
+
+As I said above, we are interested in data aggregated by month. Let's take a quick look at the two datasets that have a date column, meteorology and air quality, to make sure they are at the monthly time scale.
+
+There are several ways of doing this. You could print the entirety of the date column, or look for unique date values, or look at a head() of the date column. Let's do all three for demonstration purposes. 
+
+```{r}
+#using head():
+head(met$date_valid_std)
+head(air$date)
+
+#looking for unique dates:
+print(unique(met$date_valid_std))
+print(unique(air$date))
+
+#looking at all the data:
+met$date_valid_std
+air$date
+```
+
+
+The air quality date column is a little crazy-looking. It seems to be a full date (with year, month, and day), but the "day" is always the first of the month. Therefore, it seems that the air quality data is already aggregated to monthly aggregate values, but Weather Source assigned it to the first of the month. We can work with that.
+
+It looks like meteorology is in daily format, so we will have to aggregate that ourselves. 
+
+First, let's work with creating a month-year column for air quality using the zoo package. That's all we have to do for the air quality data.
+
+```{r}
+
+air$mon_year <- as.yearmon(air$date, format = "%m/%d/%Y") #use the as.yearmon function to transform a date. Give it the current format of the data.
+
+```
+
+
+Second, we will create a similar column (month-year) for the meteorology. 
+
+
+```{r}
+
+met$mon_year <- as.yearmon(met$date_valid_std, format = "%Y-%m-%d") #notice that the format changed. 
+
+```
+
+
+We now have our monthly variable and our FIPS code variable, and we can aggregate our daily meteorology data to monthly. 
+
+
+```{r}
+
+#Aggregate by FIPS code and month-year:
+
+#averages when average makes sense (temps, pressure, wind speed)
+met_means <- aggregate(met[,c(8:52,56:62)], list(fips = met$fips, mon_year = met$mon_year), mean)
+
+#sums when sum makes sense (total # of precipitation inches each month)
+met_sums <- aggregate(met[,c(53:54)], list(fips = met$fips, mon_year = met$mon_year), sum)
+
+#merge together
+agg_met <- merge(met_means,met_sums) 
+
+```
+
+
+Check the aggregated data to see if the aggregation worked:
+
+```{r}
+
+head(agg_met)
+
+```
+
+When merging datasets, it is easiest if the columns you want to merge by have the same names across datasets. For this, we will use the dplyr package's *rename* function. Note: we installed/loaded dplyr as part of the broader tidyverse package.
+
+The only renaming we need to do is for the FIPS code column in the land use dataset. 
+
+
+```{r}
+
+land <- land %>%  
+  rename("fips" = GEOID)  #rename the GEOID column "fips" to match air and agg_met
+
+```
+
+
+Time to merge!
+
+We merge datasets one at a time, and take a look to make sure everything is going well, at each step.
+
+Here, I will merge meteorology and air quality together into a new object, data. I will use the function *left_join*. This function takes the form left_join(dataset 1, dataset 2, by = *joining variable(s)*), and uses dataset 1, on the left side of the comma, as the base dataset for the merge. The dataset to the right of the comma is joined to the base dataset. R does this by matching the values in the "by" columns.  
+
+It is best to use all the variables the datasets have in common for the "by" portion of the function. In our case, meteorology and air quality have both FIPS code and month-year data in common. 
+
+
+```{r}
+#merge meteorology and air quality
+
+data <- left_join(agg_met, air, by = c("fips","mon_year"))
+
+summary(data) #does it look like what you would expect?
+
+#The mon_year column looks a little strange.
+
+head(data$mon_year) #upon closer inspection, it looks fine!
+
+```
+
+
+Use left_join to merge the land use data with our overall dataset. Remember that land use data has no date, so we are merging only by fips. 
+
+Effectively, this means that we will get the same land use values for every month/year for each fips code. That's okay. Land use doesn't tend to change very much over time. If you see a lot of variation in *your* land use data over time, you can choose to have it more detailed than what I demonstrate here and include a date column. 
+
+
+```{r}
+
+data <- left_join(data, land, by = "fips")
+
+#take a look:
+
+head(data)
+
+```
+
+
+The final bit of merging that we need to do is adding our case data. First, we will load it in and take a look at it:
+
+
+```{r}
+#Load case data
+
+cases <- read.csv("case_data.csv")
+
+cases$mon_year <- as.yearmon(cases$date, format = "%Y-%m-%d") #need to get mon-year 
+data <- left_join(data, cases, by = c("fips","mon_year"))
+
+
+```
+
+For our uses, we will only need a few variables to explore modeling in depth. Let's reduce our dataset to some interesting variables. 
+
+```{r}
+
+
+data <- data[,c("fips","mon_year", "case_rate_100k", "avg_temperature_air_2m_f",
+                "avg_humidity_relative_2m_pct","avg_wind_speed_10m_mph",
+                "avg_particulate_matter_2p5_ugpm3_x10", "tot_precipitation_in")]
+
+data <- data[complete.cases(data),] #we have more weather data than case data, so remove the rows with no case data
+
+write.csv(data, file = "practice_data.csv", row.names = F) #this will save the new, smaller, dataset as a file that can be used later. It is already saved in Github, so you don't need to run this. 
+#data <- read.csv("practice_data.csv")
+#data$mon_year <- as.yearmon(data$mon_year)
+```
+
+
+
+
+###  Data visualization  ###
+
+
+The first step to data visualization is what we have already done many times - looking at the structure of the dataset:
+
+
+```{r}
+
+names(data)
+str(data)
+head(data)
+summary(data)
+
+```
+
+
+Once we know that everything is arranged correctly, we can start doing the real "visualizing." This means plots and graphs. 
+
+The simplest way of plotting data in R is to use the base R functions like *hist()* for histograms or *plot()* for more traditional graphs.
+
+Let's practice:
+
+
+```{r}
+
+hist(data$case_rate_100k)
+
+plot(x = data$mon_year, y = data$case_rate_100k)
+
+```
+
+
+The histogram is less satisfying that we'd like. This is because NTM is a rare infection, and there are many months with 0 cases. Let's take the log of case rate and see if we find a different pattern:
+
+
+```{r}
+
+hist(log(data$case_rate_100k))
+
+```
+
+
+What does the histogram teach us? We have really skewed data (because of all the 0s). At first, this may make us consider using statistical models that are built for data with lots of 0s. But those models are very complicated and are difficult to explain to general audiences. Thankfully, taking the log of the rates was really effective. At this point, we can consider using the log of the case rate for future analysis. 
+
+
+Most people do not plot data using the base R functions. There is a helpful R package called *GGPlot* that makes improved graphics. 
+
+GGPlot is based on the "grammer of graphics." Essentially, you build a plot the same way you would form a sentence. 
+
+For example, let's build the sentence: "The Monthly Case Rate per 100,000 Persons is higher in winter than in summer."
+
+
+The first thing we need to do is look at what data we have that matches that sentence. We have monthly case rates and we have month-year. This seems to fit just fine:
+
+```{r}
+
+ggplot(data = data, aes(x = mon_year, y = case_rate_100k)) 
+
+```
+
+What happened when we ran that chunk? 
+
+You should have gotten a grid, or, the "background" plot. Basically, GGPlot understood what your X and Y axes are. But it doesn't yet know what to do with that information. Do you want to plot the data using a line? A series of points? Let's try both:
+
+
+```{r}
+
+ggplot(data = data, aes(x = mon_year, y = case_rate_100k)) + geom_point()
+
+ggplot(data = data, aes(x = mon_year, y = case_rate_100k)) + geom_line()
+
+```
+
+
+A lot more information there, but still, not very pretty.
+
+The reason the case rate is not forming a pretty curve is that there are different case rates within each month. Why? Because each month, there are different counties/FIPS locations that have associated case rates. Let's manipulate the data a little to get an overall value for the rate across time:
+
+```{r}
+
+plot_data <- data %>% group_by(mon_year) %>%
+  summarize(total_case_rate = sum(case_rate_100k, na.rm = T)) %>%
+  ungroup()
+
+```
+
+Then, let's plot it:
+
+```{r}
+
+ggplot(data = plot_data, aes(x = mon_year, y = total_case_rate)) + geom_line()
+
+```
+
+Now we are talking! We have a nice line plot now. Admittedly, the background of the plot and the axes are not too pretty, though. 
+
+The next step in the grammer of graphics, now that the data is plotted correctly, is to make things a little prettier. 
+
+
+```{r}
+
+ggplot(data = plot_data, aes(x = mon_year, y = total_case_rate)) + geom_line(size = 1) +
+  theme_classic() + 
+  labs(title = "Total Cases per 100,000 Persons", x = "Month-Year", y = "Cases per 100,000 Persons")
+
+
+```
+
+Much nicer. 
+
+
+You can do the same for all the variables in our dataset. Practice makes perfect! You can use the following, empty, code chunk to practice:
+
+
+```{r}
+
+
+
+
+
+```
